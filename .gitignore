@@ -3,6 +3,10 @@
 .env.*
 !.env.example
 
+# Project config (contains company-specific URLs and IDs)
+config.yaml
+!config.yaml.example
+
 # Python
 __pycache__/
 *.py[cod]
@@ -29,3 +33,13 @@ Thumbs.db
 # Logs
 logs/*
 !logs/.gitkeep
+
+# Output / downloaded data (may contain company data)
+output/
+data/
+*.csv
+*.xlsx
+*.xls
+*.json
+!package.json
+!package-lock.json

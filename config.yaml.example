@@ -2,11 +2,11 @@
 account_mode: personal
 
 slack:
-  notify_channel: "#general"
+  notify_channel: "#general"   # 実行結果の通知先チャンネル
 
 confluence:
   base_url: https://your-domain.atlassian.net
-  page_id: "123456789"
+  page_id: "123456789"         # 操作対象ページの ID
 
 ms_graph:
   graph_base_url: https://graph.microsoft.com/v1.0
@@ -15,7 +15,7 @@ ms_graph:
 
 excel:
   file_id: "your-excel-file-item-id"   # OneDrive/SharePoint の Drive Item ID
-  drive_id: "your-drive-id"            # Drive ID（SharePoint/OneDriveのドライブID）
+  drive_id: "your-drive-id"            # Drive ID
   sheet_name: "Sheet1"
   range:
     start_col: "A"
