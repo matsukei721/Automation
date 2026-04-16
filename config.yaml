@@ -1,3 +1,6 @@
+# personal: 個人アカウント / service: 会社共有サービスアカウント
+account_mode: personal
+
 confluence:
   base_url: https://your-domain.atlassian.net
   page_id: "123456789"

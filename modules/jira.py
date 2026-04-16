@@ -1,25 +1,66 @@
 """Jira API client."""
 
 import os
+from pathlib import Path
 
 import requests
+import yaml
 from requests.auth import HTTPBasicAuth
 
 
-class JiraClient:
-    """Jira REST API v3 クライアント。"""
+def _load_config(config_path: str | Path) -> dict:
+    with Path(config_path).open(encoding="utf-8") as f:
+        return yaml.safe_load(f)
 
-    def __init__(self) -> None:
+
+class JiraClient:
+    """Jira REST API v3 クライアント。
+
+    直接生成:
+        client = JiraClient()
+        # JIRA_EMAIL_PERSONAL / JIRA_API_TOKEN_PERSONAL を使用
+
+    モード切り替え対応:
+        client = JiraClient.from_config()
+        # config.yaml の account_mode に応じて PERSONAL / SERVICE を自動選択
+    """
+
+    def __init__(self, email: str | None = None, api_token: str | None = None) -> None:
+        """
+        Args:
+            email: Jira ログインメール。省略時は JIRA_EMAIL_PERSONAL を使用。
+            api_token: Jira API トークン。省略時は JIRA_API_TOKEN_PERSONAL を使用。
+        """
         self.base_url = os.environ["JIRA_BASE_URL"].rstrip("/")
         self.auth = HTTPBasicAuth(
-            os.environ["JIRA_EMAIL"],
-            os.environ["JIRA_API_TOKEN"],
+            email or os.environ["JIRA_EMAIL_PERSONAL"],
+            api_token or os.environ["JIRA_API_TOKEN_PERSONAL"],
         )
         self.headers = {
             "Accept": "application/json",
             "Content-Type": "application/json",
         }
         self._api = f"{self.base_url}/rest/api/3"
+
+    @classmethod
+    def from_config(cls, config_path: str | Path = "config.yaml") -> "JiraClient":
+        """config.yaml の account_mode に応じた認証情報でクライアントを生成する。
+
+        account_mode: personal → JIRA_EMAIL_PERSONAL / JIRA_API_TOKEN_PERSONAL
+        account_mode: service  → JIRA_EMAIL_SERVICE  / JIRA_API_TOKEN_SERVICE
+
+        Args:
+            config_path: config.yaml のパス
+
+        Returns:
+            JiraClient インスタンス
+        """
+        config = _load_config(config_path)
+        mode = config.get("account_mode", "personal").upper()
+        return cls(
+            email=os.environ[f"JIRA_EMAIL_{mode}"],
+            api_token=os.environ[f"JIRA_API_TOKEN_{mode}"],
+        )
 
     # ------------------------------------------------------------------
     # Issue

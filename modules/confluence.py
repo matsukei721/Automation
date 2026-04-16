@@ -23,13 +23,27 @@ def load_config(config_path: str | Path = "config.yaml") -> dict:
 
 
 class ConfluenceClient:
-    """Confluence REST API v2 クライアント。"""
+    """Confluence REST API v2 クライアント。
 
-    def __init__(self) -> None:
+    直接生成:
+        client = ConfluenceClient()
+        # CONFLUENCE_EMAIL_PERSONAL / CONFLUENCE_API_TOKEN_PERSONAL を使用
+
+    モード切り替え対応:
+        client = ConfluenceClient.from_config()
+        # config.yaml の account_mode に応じて PERSONAL / SERVICE を自動選択
+    """
+
+    def __init__(self, email: str | None = None, api_token: str | None = None) -> None:
+        """
+        Args:
+            email: Confluence ログインメール。省略時は CONFLUENCE_EMAIL_PERSONAL を使用。
+            api_token: Confluence API トークン。省略時は CONFLUENCE_API_TOKEN_PERSONAL を使用。
+        """
         self.base_url = os.environ["CONFLUENCE_BASE_URL"].rstrip("/")
         self.auth = HTTPBasicAuth(
-            os.environ["CONFLUENCE_EMAIL"],
-            os.environ["CONFLUENCE_API_TOKEN"],
+            email or os.environ["CONFLUENCE_EMAIL_PERSONAL"],
+            api_token or os.environ["CONFLUENCE_API_TOKEN_PERSONAL"],
         )
         self.headers = {
             "Accept": "application/json",
@@ -40,10 +54,10 @@ class ConfluenceClient:
 
     @classmethod
     def from_config(cls, config_path: str | Path = "config.yaml") -> "ConfluenceClient":
-        """config.yaml と .env から設定を読み込んでクライアントを作成する。
+        """config.yaml の account_mode と confluence セクションからクライアントを生成する。
 
-        config.yaml の confluence.base_url を使用し、
-        認証情報（email / api_token）は環境変数から読み込む。
+        account_mode: personal → CONFLUENCE_EMAIL_PERSONAL / CONFLUENCE_API_TOKEN_PERSONAL
+        account_mode: service  → CONFLUENCE_EMAIL_SERVICE  / CONFLUENCE_API_TOKEN_SERVICE
 
         Args:
             config_path: config.yaml のパス
@@ -52,12 +66,15 @@ class ConfluenceClient:
             ConfluenceClient インスタンス
         """
         config = load_config(config_path)
+        mode = config.get("account_mode", "personal").upper()
         conf = config.get("confluence", {})
 
-        # base_url を config.yaml から上書き
         os.environ.setdefault("CONFLUENCE_BASE_URL", conf.get("base_url", ""))
 
-        instance = cls()
+        instance = cls(
+            email=os.environ[f"CONFLUENCE_EMAIL_{mode}"],
+            api_token=os.environ[f"CONFLUENCE_API_TOKEN_{mode}"],
+        )
         instance.default_page_id = str(conf["page_id"]) if conf.get("page_id") else None
         return instance
 
