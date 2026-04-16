@@ -1,3 +1,11 @@
 confluence:
   base_url: https://your-domain.atlassian.net
   page_id: "123456789"
+
+excel:
+  file_id: "your-excel-file-item-id"   # OneDrive/SharePoint の Drive Item ID
+  drive_id: "your-drive-id"            # Drive ID（SharePoint/OneDriveのドライブID）
+  sheet_name: "Sheet1"
+  range:
+    start_col: "A"
+    end_col: "G"
