@@ -1,37 +1,306 @@
 # Automation
 
-自動化スクリプト・ツール集
+Jira / Confluence / Slack / Excel（MS Graph）を組み合わせた業務自動化ツール集。
+
+---
+
+## 目次
+
+- [環境構築](#環境構築)
+- [設定ファイル](#設定ファイル)
+- [アカウントモードの切り替え](#アカウントモードの切り替え)
+- [モジュール使い方](#モジュール使い方)
+- [ログ](#ログ)
+- [開発コマンド](#開発コマンド)
+- [ディレクトリ構成](#ディレクトリ構成)
+
+---
 
 ## 環境構築
 
+**必要なもの**
+- Python 3.11
+- [uv](https://docs.astral.sh/uv/)
+
 ```bash
-# Python 3.11 が必要
+# 依存パッケージのインストール
 uv sync
 
-# .env ファイルに API キーを設定
-cp .env.example .env  # 必要に応じて
+# .env を作成してAPIキーを設定（下記「設定ファイル」参照）
+cp .env.example .env   # なければ手動で .env を作成
 ```
 
-## 実行
+---
+
+## 設定ファイル
+
+### `.env`（機密情報・git管理外）
+
+```env
+# Jira
+JIRA_BASE_URL=https://your-domain.atlassian.net
+JIRA_EMAIL_PERSONAL=your-email@example.com
+JIRA_API_TOKEN_PERSONAL=your_personal_api_token
+JIRA_EMAIL_SERVICE=service-account@your-domain.atlassian.net
+JIRA_API_TOKEN_SERVICE=your_service_api_token
+
+# Confluence
+CONFLUENCE_BASE_URL=https://your-domain.atlassian.net
+CONFLUENCE_EMAIL_PERSONAL=your-email@example.com
+CONFLUENCE_API_TOKEN_PERSONAL=your_personal_api_token
+CONFLUENCE_EMAIL_SERVICE=service-account@your-domain.atlassian.net
+CONFLUENCE_API_TOKEN_SERVICE=your_service_api_token
+
+# Slack
+SLACK_BOT_TOKEN=xoxb-your-bot-token
+
+# Microsoft Graph API（Excelアクセス用）
+MS_GRAPH_CLIENT_ID=your-client-id
+MS_GRAPH_CLIENT_SECRET=your-client-secret
+MS_GRAPH_TENANT_ID=your-tenant-id
+```
+
+> Jira / Confluence の API トークンは [Atlassian アカウント設定](https://id.atlassian.com/manage-profile/security/api-tokens) から発行。
+> MS Graph の認証情報は Azure Portal のアプリ登録から取得（必要な権限: `Files.ReadWrite.All`）。
+
+### `config.yaml`（公開設定・git管理対象）
+
+```yaml
+# personal: 個人アカウント / service: 会社共有サービスアカウント
+account_mode: personal
+
+slack:
+  notify_channel: "#general"   # 実行結果の通知先チャンネル
+
+confluence:
+  base_url: https://your-domain.atlassian.net
+  page_id: "123456789"         # 操作対象のページID
+
+ms_graph:
+  graph_base_url: https://graph.microsoft.com/v1.0
+  login_base_url: https://login.microsoftonline.com
+  scope: https://graph.microsoft.com/.default
+
+excel:
+  file_id: "your-file-item-id"  # OneDrive/SharePoint の Drive Item ID
+  drive_id: "your-drive-id"     # Drive ID
+  sheet_name: "Sheet1"
+  range:
+    start_col: "A"
+    end_col: "G"
+```
+
+---
+
+## アカウントモードの切り替え
+
+`config.yaml` の **1行だけ** 変更することで認証アカウントを切り替えられる。
+
+```yaml
+# 個人アカウントで動かす場合
+account_mode: personal
+
+# 会社共有のサービスアカウントに切り替える場合
+account_mode: service
+```
+
+| モード | 使用される環境変数 |
+|---|---|
+| `personal` | `JIRA_EMAIL_PERSONAL` / `JIRA_API_TOKEN_PERSONAL` など |
+| `service` | `JIRA_EMAIL_SERVICE` / `JIRA_API_TOKEN_SERVICE` など |
+
+Slack・Excel（MS Graph）はアプリ権限のため、モード切り替えの影響を受けない。
+
+---
+
+## モジュール使い方
+
+すべてのクライアントは `from_config()` で生成するのが基本。
+
+```python
+from dotenv import load_dotenv
+load_dotenv()
+
+from modules import setup_logger
+from modules import JiraClient, ConfluenceClient, SlackClient, ExcelClient
+
+setup_logger()  # ログ初期化（main.py で一度だけ呼ぶ）
+```
+
+### JiraClient
+
+```python
+jira = JiraClient.from_config()
+
+# Issue取得
+issue = jira.get_issue("PROJ-123")
+
+# Issue作成
+new_issue = jira.create_issue(
+    project_key="PROJ",
+    summary="タスクのタイトル",
+    description="詳細説明",
+    issue_type="Task",   # Task / Bug / Story など
+)
+
+# JQLで検索
+issues = jira.search_issues("project = PROJ AND status = 'In Progress'")
+
+# フィールド更新
+jira.update_issue("PROJ-123", {"status": {"name": "Done"}})
+
+# コメント追加
+jira.add_comment("PROJ-123", "対応完了しました。")
+```
+
+### ConfluenceClient
+
+```python
+confluence = ConfluenceClient.from_config()
+# config.yaml の confluence.page_id が default_page_id として自動設定される
+
+# ページ取得
+page = confluence.get_page("123456789")
+
+# ページ作成
+new_page = confluence.create_page(
+    space_id="SPACE_ID",
+    title="ページタイトル",
+    body="<p>本文</p>",
+    parent_id="987654321",   # 省略可
+)
+
+# ページ更新
+confluence.update_page("123456789", "新しいタイトル", "<p>新しい本文</p>", version=3)
+
+# テーブルのヘッダー行直下に行を挿入
+# page_id 省略時は config.yaml の confluence.page_id を使用
+confluence.insert_row_below_header(["2026/04/16", "タスク名", "完了", "田中"])
+```
+
+### SlackClient
+
+```python
+slack = SlackClient()
+
+# メッセージ送信
+slack.post_message("#general", "こんにちは")
+
+# 成功通知（緑チェック付き）
+slack.notify_success("#general", "日次処理 完了", "全10件処理しました")
+
+# エラー通知（スタックトレース付き）
+import traceback
+try:
+    ...
+except Exception as e:
+    slack.notify_error("#general", "日次処理 失敗", e, traceback.format_exc())
+```
+
+### ExcelClient
+
+```python
+excel = ExcelClient.from_config()
+
+# シート情報取得
+sheet = excel.get_sheet()
+
+# 今日の日付の行にデータを書き込む（A列で日付を検索）
+excel.write_row_by_date(
+    data=["2026/04/16", "タスク", "完了", "田中", "3h", "備考", ""],
+    # target_date 省略時は date.today() を使用
+)
+
+# 日付を明示する場合
+excel.write_row_by_date(
+    data=["2026/04/15", "タスク", "完了", "田中", "2h", "", ""],
+    target_date="2026/04/15",
+)
+
+# 行番号を直接指定して書き込む
+excel.write_row(row_number=5, data=["A", "B", "C", "D", "E", "F", "G"])
+```
+
+### utils（日付ユーティリティ）
+
+```python
+from modules.utils import today, format_date, date_range
+from datetime import date
+
+# 今日の日付
+d = today()                             # date(2026, 4, 16)
+
+# フォーマット変換
+format_date(d)                          # "2026/04/16"
+format_date(d, "%Y-%m-%d")             # "2026-04-16"
+format_date(d, "%Y年%m月%d日")         # "2026年04月16日"
+
+# 日付範囲の生成
+for d in date_range(date(2026, 4, 1), date(2026, 4, 5)):
+    print(d)
+# 2026-04-01, 2026-04-02, ... , 2026-04-05
+```
+
+---
+
+## ログ
+
+実行ログは `logs/` ディレクトリに日付ごとのファイルで保存される。
+
+```
+logs/
+└── 2026-04-16.log   # その日の実行ログ（自動生成・30日保持）
+```
+
+ログフォーマット:
+```
+2026-04-16 10:23:45.123 | INFO     | jira:get_issue:81 | JiraClient.get_issue | issue_key=PROJ-123
+2026-04-16 10:23:45.456 | INFO     | jira:get_issue:87 | JiraClient.get_issue | done | issue_key=PROJ-123 status=In Progress
+```
+
+ログレベルを変更する場合:
+```python
+setup_logger(level="DEBUG")   # DEBUG / INFO / WARNING / ERROR
+```
+
+---
+
+## 開発コマンド
 
 ```bash
+# 実行
 uv run main.py
-```
 
-## Lint / Format
-
-```bash
+# Lintチェック
 uv run ruff check .
+
+# 自動フォーマット
 uv run ruff format .
+
+# パッケージ追加
+uv add <package-name>
 ```
 
-## 構成
+---
+
+## ディレクトリ構成
 
 ```
 Automation/
-├── main.py          # エントリーポイント
-├── modules/         # モジュール群
-├── .env             # 機密情報（git管理外）
-├── pyproject.toml   # プロジェクト設定・依存関係
-└── uv.lock          # 依存関係ロックファイル
+├── main.py               # エントリーポイント（try/except + Slack通知）
+├── config.yaml           # 公開設定（account_mode・各サービスのID等）
+├── .env                  # 機密情報（APIキー等・git管理外）
+├── pyproject.toml        # プロジェクト設定・依存関係
+├── uv.lock               # 依存関係ロックファイル
+├── .python-version       # Python バージョン固定（3.11）
+├── modules/
+│   ├── __init__.py       # 各クライアントのエクスポート
+│   ├── jira.py           # Jira REST API v3 クライアント
+│   ├── confluence.py     # Confluence REST API v2 クライアント
+│   ├── slack.py          # Slack Web API クライアント（通知機能含む）
+│   ├── excel.py          # MS Graph API 経由の Excel 操作クライアント
+│   ├── logger.py         # ログ設定（loguru・日付ローテーション）
+│   └── utils.py          # 日付ユーティリティ関数
+└── logs/
+    └── YYYY-MM-DD.log    # 実行ログ（自動生成・git管理外）
 ```
