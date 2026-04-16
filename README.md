@@ -22,12 +22,22 @@ Jira / Confluence / Slack / Excel（MS Graph）を組み合わせた業務自動
 - Python 3.11
 - [uv](https://docs.astral.sh/uv/)
 
+> **このリポジトリを初めて使う場合**
+> `.env` と `config.yaml` はセキュリティ上の理由から git 管理対象外のため、リポジトリには含まれていません。
+> 以下の手順に従って **自分の環境で作成する必要があります**。
+
 ```bash
-# 依存パッケージのインストール
+# 1. 依存パッケージのインストール
 uv sync
 
-# .env を作成してAPIキーを設定（下記「設定ファイル」参照）
-cp .env.example .env   # なければ手動で .env を作成
+# 2. 設定ファイルをサンプルからコピーして作成
+cp config.yaml.example config.yaml
+
+# 3. .env を作成（.env.example が存在する場合）
+cp .env.example .env
+
+# 4. config.yaml と .env をそれぞれ自分の環境の値に書き換える
+#    （下記「設定ファイル」参照）
 ```
 
 ---
@@ -35,6 +45,9 @@ cp .env.example .env   # なければ手動で .env を作成
 ## 設定ファイル
 
 ### `.env`（機密情報・git管理外）
+
+> **自分の環境で作成が必要なファイルです。**
+> APIキーやトークン等の機密情報が含まれるため、絶対にコミット・pushしないでください。
 
 ```env
 # Jira
@@ -63,7 +76,11 @@ MS_GRAPH_TENANT_ID=your-tenant-id
 > Jira / Confluence の API トークンは [Atlassian アカウント設定](https://id.atlassian.com/manage-profile/security/api-tokens) から発行。
 > MS Graph の認証情報は Azure Portal のアプリ登録から取得（必要な権限: `Files.ReadWrite.All`）。
 
-### `config.yaml`（公開設定・git管理対象）
+### `config.yaml`（環境固有の設定・git管理外）
+
+> **自分の環境で作成が必要なファイルです。**
+> リポジトリには含まれていないため、`config.yaml.example` をコピーして作成してください。
+> 会社固有の情報（ドメイン・各種ID）が含まれるため、絶対にコミット・pushしないでください。
 
 ```yaml
 # personal: 個人アカウント / service: 会社共有サービスアカウント
@@ -288,8 +305,9 @@ uv add <package-name>
 ```
 Automation/
 ├── main.py               # エントリーポイント（try/except + Slack通知）
-├── config.yaml           # 公開設定（account_mode・各サービスのID等）
-├── .env                  # 機密情報（APIキー等・git管理外）
+├── config.yaml           # 環境固有の設定（git管理外・要自己作成）
+├── config.yaml.example   # config.yaml のサンプル（git管理対象）
+├── .env                  # 機密情報（APIキー等・git管理外・要自己作成）
 ├── pyproject.toml        # プロジェクト設定・依存関係
 ├── uv.lock               # 依存関係ロックファイル
 ├── .python-version       # Python バージョン固定（3.11）
