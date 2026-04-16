@@ -47,34 +47,44 @@ cp .env.example .env
 ### `.env`（機密情報・git管理外）
 
 > **自分の環境で作成が必要なファイルです。**
+> `.env.example` をコピーして作成し、各サービスの値を設定してください。
 > APIキーやトークン等の機密情報が含まれるため、絶対にコミット・pushしないでください。
 
-```env
-# Jira
-JIRA_BASE_URL=https://your-domain.atlassian.net
-JIRA_EMAIL_PERSONAL=your-email@example.com
-JIRA_API_TOKEN_PERSONAL=your_personal_api_token
-JIRA_EMAIL_SERVICE=service-account@your-domain.atlassian.net
-JIRA_API_TOKEN_SERVICE=your_service_api_token
-
-# Confluence
-CONFLUENCE_BASE_URL=https://your-domain.atlassian.net
-CONFLUENCE_EMAIL_PERSONAL=your-email@example.com
-CONFLUENCE_API_TOKEN_PERSONAL=your_personal_api_token
-CONFLUENCE_EMAIL_SERVICE=service-account@your-domain.atlassian.net
-CONFLUENCE_API_TOKEN_SERVICE=your_service_api_token
-
-# Slack
-SLACK_BOT_TOKEN=xoxb-your-bot-token
-
-# Microsoft Graph API（Excelアクセス用）
-MS_GRAPH_CLIENT_ID=your-client-id
-MS_GRAPH_CLIENT_SECRET=your-client-secret
-MS_GRAPH_TENANT_ID=your-tenant-id
+```bash
+cp .env.example .env
 ```
 
-> Jira / Confluence の API トークンは [Atlassian アカウント設定](https://id.atlassian.com/manage-profile/security/api-tokens) から発行。
-> MS Graph の認証情報は Azure Portal のアプリ登録から取得（必要な権限: `Files.ReadWrite.All`）。
+設定が必要な値は以下の通りです。
+
+#### Jira / Confluence
+
+| 変数名 | 説明 | 取得元 |
+|---|---|---|
+| `JIRA_BASE_URL` | Jira のベース URL | 社内の Atlassian ドメイン |
+| `JIRA_EMAIL_PERSONAL` | 個人アカウントのメールアドレス | 自分の Atlassian ログインメール |
+| `JIRA_API_TOKEN_PERSONAL` | 個人アカウントの API トークン | [Atlassian アカウント設定](https://id.atlassian.com/manage-profile/security/api-tokens) |
+| `JIRA_EMAIL_SERVICE` | サービスアカウントのメールアドレス | 管理者に確認 |
+| `JIRA_API_TOKEN_SERVICE` | サービスアカウントの API トークン | 管理者に確認 |
+| `CONFLUENCE_BASE_URL` | Confluence のベース URL | 社内の Atlassian ドメイン（Jira と同じことが多い） |
+| `CONFLUENCE_EMAIL_*` / `CONFLUENCE_API_TOKEN_*` | Jira と同様 | Jira と同じ Atlassian アカウント |
+
+#### Slack
+
+| 変数名 | 説明 | 取得元 |
+|---|---|---|
+| `SLACK_BOT_TOKEN` | Bot トークン（`xoxb-` から始まる） | [Slack API](https://api.slack.com/apps) → アプリ選択 → OAuth & Permissions |
+
+必要なスコープ: `chat:write` / `channels:read` / `files:write` / `users:read`
+
+#### Microsoft Graph API（Excel）
+
+| 変数名 | 説明 | 取得元 |
+|---|---|---|
+| `MS_GRAPH_CLIENT_ID` | アプリケーション（クライアント）ID | [Azure Portal](https://portal.azure.com) → アプリの登録 |
+| `MS_GRAPH_CLIENT_SECRET` | クライアントシークレット | Azure Portal → 証明書とシークレット |
+| `MS_GRAPH_TENANT_ID` | ディレクトリ（テナント）ID | Azure Portal → アプリの登録 |
+
+必要な API 権限: `Files.ReadWrite.All`（アプリケーション権限）
 
 ### `config.yaml`（環境固有の設定・git管理外）
 
