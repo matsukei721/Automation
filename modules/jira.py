@@ -1,0 +1,137 @@
+"""Jira API client."""
+
+import os
+
+import requests
+from requests.auth import HTTPBasicAuth
+
+
+class JiraClient:
+    """Jira REST API v3 クライアント。"""
+
+    def __init__(self) -> None:
+        self.base_url = os.environ["JIRA_BASE_URL"].rstrip("/")
+        self.auth = HTTPBasicAuth(
+            os.environ["JIRA_EMAIL"],
+            os.environ["JIRA_API_TOKEN"],
+        )
+        self.headers = {
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+        }
+        self._api = f"{self.base_url}/rest/api/3"
+
+    # ------------------------------------------------------------------
+    # Issue
+    # ------------------------------------------------------------------
+
+    def get_issue(self, issue_key: str) -> dict:
+        """Issue を取得する。
+
+        Args:
+            issue_key: Issue キー（例: "PROJ-123"）
+
+        Returns:
+            Issue の JSON レスポンス
+        """
+        url = f"{self._api}/issue/{issue_key}"
+        response = requests.get(url, auth=self.auth, headers=self.headers, timeout=30)
+        response.raise_for_status()
+        return response.json()
+
+    def create_issue(
+        self, project_key: str, summary: str, description: str = "", issue_type: str = "Task"
+    ) -> dict:
+        """Issue を作成する。
+
+        Args:
+            project_key: プロジェクトキー（例: "PROJ"）
+            summary: Issue タイトル
+            description: 説明文（ADF形式）
+            issue_type: Issue タイプ（Task / Bug / Story など）
+
+        Returns:
+            作成された Issue の JSON レスポンス
+        """
+        url = f"{self._api}/issue"
+        payload = {
+            "fields": {
+                "project": {"key": project_key},
+                "summary": summary,
+                "description": {
+                    "type": "doc",
+                    "version": 1,
+                    "content": [
+                        {
+                            "type": "paragraph",
+                            "content": [{"type": "text", "text": description}],
+                        }
+                    ],
+                },
+                "issuetype": {"name": issue_type},
+            }
+        }
+        response = requests.post(
+            url, auth=self.auth, headers=self.headers, json=payload, timeout=30
+        )
+        response.raise_for_status()
+        return response.json()
+
+    def update_issue(self, issue_key: str, fields: dict) -> None:
+        """Issue を更新する。
+
+        Args:
+            issue_key: Issue キー（例: "PROJ-123"）
+            fields: 更新するフィールドの辞書
+        """
+        url = f"{self._api}/issue/{issue_key}"
+        payload = {"fields": fields}
+        response = requests.put(url, auth=self.auth, headers=self.headers, json=payload, timeout=30)
+        response.raise_for_status()
+
+    def search_issues(self, jql: str, max_results: int = 50) -> list[dict]:
+        """JQL でIssue を検索する。
+
+        Args:
+            jql: JQL クエリ文字列（例: "project = PROJ AND status = 'In Progress'"）
+            max_results: 最大取得件数
+
+        Returns:
+            Issue のリスト
+        """
+        url = f"{self._api}/search"
+        params = {"jql": jql, "maxResults": max_results}
+        response = requests.get(
+            url, auth=self.auth, headers=self.headers, params=params, timeout=30
+        )
+        response.raise_for_status()
+        return response.json().get("issues", [])
+
+    def add_comment(self, issue_key: str, body: str) -> dict:
+        """Issue にコメントを追加する。
+
+        Args:
+            issue_key: Issue キー
+            body: コメント本文
+
+        Returns:
+            作成されたコメントの JSON レスポンス
+        """
+        url = f"{self._api}/issue/{issue_key}/comment"
+        payload = {
+            "body": {
+                "type": "doc",
+                "version": 1,
+                "content": [
+                    {
+                        "type": "paragraph",
+                        "content": [{"type": "text", "text": body}],
+                    }
+                ],
+            }
+        }
+        response = requests.post(
+            url, auth=self.auth, headers=self.headers, json=payload, timeout=30
+        )
+        response.raise_for_status()
+        return response.json()
