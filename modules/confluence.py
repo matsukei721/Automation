@@ -1,9 +1,25 @@
 """Confluence API client."""
 
 import os
+from pathlib import Path
 
 import requests
+import yaml
+from bs4 import BeautifulSoup, Tag
 from requests.auth import HTTPBasicAuth
+
+
+def load_config(config_path: str | Path = "config.yaml") -> dict:
+    """config.yaml を読み込んで辞書で返す。
+
+    Args:
+        config_path: config.yaml のパス（デフォルト: カレントディレクトリの config.yaml）
+
+    Returns:
+        設定辞書
+    """
+    with Path(config_path).open(encoding="utf-8") as f:
+        return yaml.safe_load(f)
 
 
 class ConfluenceClient:
@@ -20,19 +36,43 @@ class ConfluenceClient:
             "Content-Type": "application/json",
         }
         self._api = f"{self.base_url}/wiki/api/v2"
+        self.default_page_id: str | None = None
+
+    @classmethod
+    def from_config(cls, config_path: str | Path = "config.yaml") -> "ConfluenceClient":
+        """config.yaml と .env から設定を読み込んでクライアントを作成する。
+
+        config.yaml の confluence.base_url を使用し、
+        認証情報（email / api_token）は環境変数から読み込む。
+
+        Args:
+            config_path: config.yaml のパス
+
+        Returns:
+            ConfluenceClient インスタンス
+        """
+        config = load_config(config_path)
+        conf = config.get("confluence", {})
+
+        # base_url を config.yaml から上書き
+        os.environ.setdefault("CONFLUENCE_BASE_URL", conf.get("base_url", ""))
+
+        instance = cls()
+        instance.default_page_id = str(conf["page_id"]) if conf.get("page_id") else None
+        return instance
 
     # ------------------------------------------------------------------
     # Pages
     # ------------------------------------------------------------------
 
     def get_page(self, page_id: str) -> dict:
-        """ページを取得する。
+        """ページを取得する（ストレージ形式の本文を含む）。
 
         Args:
             page_id: ページ ID
 
         Returns:
-            ページの JSON レスポンス
+            ページの JSON レスポンス（body.storage.value にHTML本文）
         """
         url = f"{self._api}/pages/{page_id}"
         params = {"body-format": "storage"}
@@ -137,3 +177,103 @@ class ConfluenceClient:
         response = requests.get(url, auth=self.auth, headers=self.headers, timeout=30)
         response.raise_for_status()
         return response.json().get("results", [])
+
+    # ------------------------------------------------------------------
+    # Table utilities
+    # ------------------------------------------------------------------
+
+    def get_first_table(self, page_id: str | None = None) -> Tag:
+        """ページ内の最初のテーブルを BeautifulSoup の Tag として返す。
+
+        Args:
+            page_id: ページ ID（省略時は from_config で設定された default_page_id を使用）
+
+        Returns:
+            最初の <table> タグ
+
+        Raises:
+            ValueError: page_id が未指定かつ default_page_id も未設定の場合
+            ValueError: ページにテーブルが存在しない場合
+        """
+        pid = self._resolve_page_id(page_id)
+        page = self.get_page(pid)
+        body_html = page["body"]["storage"]["value"]
+        soup = BeautifulSoup(body_html, "html.parser")
+        table = soup.find("table")
+        if not table or not isinstance(table, Tag):
+            raise ValueError(f"ページ {pid} にテーブルが見つかりません")
+        return table
+
+    def insert_row_below_header(
+        self,
+        row_data: list[str],
+        page_id: str | None = None,
+    ) -> dict:
+        """ページ内の最初のテーブルのヘッダー行直下に新しい行を追加する。
+
+        1. ページを取得してストレージ形式の HTML を解析
+        2. 最初の <table> を特定
+        3. ヘッダー行（<th> を含む最初の <tr>）の直後に新しい <tr> を挿入
+        4. 変更した HTML でページを更新
+
+        Args:
+            row_data: 追加する行のセルデータのリスト（列順）
+            page_id: ページ ID（省略時は from_config で設定された default_page_id を使用）
+
+        Returns:
+            更新後のページの JSON レスポンス
+
+        Raises:
+            ValueError: page_id 未指定 / テーブル未検出 / ヘッダー行未検出
+        """
+        pid = self._resolve_page_id(page_id)
+
+        # ページ取得
+        page = self.get_page(pid)
+        version: int = page["version"]["number"]
+        title: str = page["title"]
+        body_html: str = page["body"]["storage"]["value"]
+
+        # HTML パース
+        soup = BeautifulSoup(body_html, "html.parser")
+        table = soup.find("table")
+        if not table or not isinstance(table, Tag):
+            raise ValueError(f"ページ {pid} にテーブルが見つかりません")
+
+        # ヘッダー行を特定（<th> を含む最初の <tr>）
+        header_row = table.find("tr", recursive=True)
+        if not header_row or not isinstance(header_row, Tag):
+            raise ValueError("テーブルに行が見つかりません")
+
+        # 新しい行を生成
+        new_row = soup.new_tag("tr")
+        for cell in row_data:
+            td = soup.new_tag("td", attrs={"class": "confluenceTd"})
+            p = soup.new_tag("p")
+            p.string = str(cell)
+            td.append(p)
+            new_row.append(td)
+
+        # ヘッダー行の直後に挿入
+        header_row.insert_after(new_row)
+
+        # ページ更新
+        updated_body = str(soup)
+        return self.update_page(pid, title, updated_body, version)
+
+    # ------------------------------------------------------------------
+    # Internal helpers
+    # ------------------------------------------------------------------
+
+    def _resolve_page_id(self, page_id: str | None) -> str:
+        """page_id を解決する。引数が None の場合は default_page_id を返す。
+
+        Raises:
+            ValueError: 両方とも未設定の場合
+        """
+        pid = page_id or self.default_page_id
+        if not pid:
+            raise ValueError(
+                "page_id を指定するか、from_config() で config.yaml から読み込んでください"
+            )
+        return pid
