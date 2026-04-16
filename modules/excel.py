@@ -9,14 +9,6 @@ from urllib.parse import quote
 import requests
 import yaml
 
-# ---------------------------------------------------------------------------
-# 定数
-# ---------------------------------------------------------------------------
-
-_GRAPH_BASE = "https://graph.microsoft.com/v1.0"
-_TOKEN_URL_TMPL = "https://login.microsoftonline.com/{tenant_id}/oauth2/v2.0/token"
-_GRAPH_SCOPE = "https://graph.microsoft.com/.default"
-
 # Excel が日付として扱う代表的な文字列フォーマット（日本語環境に合わせて優先順に列挙）
 _DATE_FORMATS = [
     "%Y/%m/%d",
@@ -93,6 +85,11 @@ class ExcelClient:
         self._token: str | None = None
         self._token_expires_at: float = 0.0
 
+        # MS Graph エンドポイント（from_config() で config.yaml から上書きされる）
+        self._graph_base: str = ""
+        self._login_base: str = ""
+        self._scope: str = ""
+
         # from_config() で設定されるデフォルト値
         self.default_file_id: str | None = None
         self.default_drive_id: str | None = None
@@ -121,9 +118,19 @@ class ExcelClient:
             ExcelClient インスタンス
         """
         config = load_config(config_path)
+
+        mg = config.get("ms_graph", {})
+        if not all([mg.get("graph_base_url"), mg.get("login_base_url"), mg.get("scope")]):
+            raise ValueError(
+                "config.yaml に ms_graph.graph_base_url / login_base_url / scope が必要です"
+            )
+
         exc = config.get("excel", {})
 
         instance = cls()
+        instance._graph_base = mg["graph_base_url"].rstrip("/")
+        instance._login_base = mg["login_base_url"].rstrip("/")
+        instance._scope = mg["scope"]
         instance.default_file_id = exc.get("file_id")
         instance.default_drive_id = exc.get("drive_id")
         instance.default_sheet_name = exc.get("sheet_name")
@@ -149,14 +156,14 @@ class ExcelClient:
         if self._token and time.time() < self._token_expires_at - 60:
             return self._token
 
-        url = _TOKEN_URL_TMPL.format(tenant_id=self._tenant_id)
+        url = f"{self._login_base}/{self._tenant_id}/oauth2/v2.0/token"
         resp = requests.post(
             url,
             data={
                 "grant_type": "client_credentials",
                 "client_id": self._client_id,
                 "client_secret": self._client_secret,
-                "scope": _GRAPH_SCOPE,
+                "scope": self._scope,
             },
             timeout=30,
         )
@@ -179,7 +186,7 @@ class ExcelClient:
 
     def _workbook_url(self, file_id: str, drive_id: str) -> str:
         """ワークブックの Graph API ベース URL を返す。"""
-        return f"{_GRAPH_BASE}/drives/{drive_id}/items/{file_id}/workbook"
+        return f"{self._graph_base}/drives/{drive_id}/items/{file_id}/workbook"
 
     def _sheet_url(self, file_id: str, drive_id: str, sheet_name: str) -> str:
         """ワークシートの Graph API ベース URL を返す。"""
