@@ -6,6 +6,7 @@ from pathlib import Path
 import requests
 import yaml
 from bs4 import BeautifulSoup, Tag
+from loguru import logger
 from requests.auth import HTTPBasicAuth
 
 
@@ -51,6 +52,7 @@ class ConfluenceClient:
         }
         self._api = f"{self.base_url}/wiki/api/v2"
         self.default_page_id: str | None = None
+        logger.info("ConfluenceClient initialized | base_url={}", self.base_url)
 
     @classmethod
     def from_config(cls, config_path: str | Path = "config.yaml") -> "ConfluenceClient":
@@ -68,6 +70,7 @@ class ConfluenceClient:
         config = load_config(config_path)
         mode = config.get("account_mode", "personal").upper()
         conf = config.get("confluence", {})
+        logger.info("ConfluenceClient.from_config | account_mode={}", mode.lower())
 
         os.environ.setdefault("CONFLUENCE_BASE_URL", conf.get("base_url", ""))
 
@@ -91,13 +94,16 @@ class ConfluenceClient:
         Returns:
             ページの JSON レスポンス（body.storage.value にHTML本文）
         """
+        logger.info("ConfluenceClient.get_page | page_id={}", page_id)
         url = f"{self._api}/pages/{page_id}"
         params = {"body-format": "storage"}
         response = requests.get(
             url, auth=self.auth, headers=self.headers, params=params, timeout=30
         )
         response.raise_for_status()
-        return response.json()
+        result = response.json()
+        logger.info("ConfluenceClient.get_page | done | title={}", result.get("title"))
+        return result
 
     def create_page(
         self, space_id: str, title: str, body: str, parent_id: str | None = None
@@ -113,6 +119,7 @@ class ConfluenceClient:
         Returns:
             作成されたページの JSON レスポンス
         """
+        logger.info("ConfluenceClient.create_page | space_id={} title={}", space_id, title)
         url = f"{self._api}/pages"
         payload: dict = {
             "spaceId": space_id,
@@ -130,7 +137,9 @@ class ConfluenceClient:
             url, auth=self.auth, headers=self.headers, json=payload, timeout=30
         )
         response.raise_for_status()
-        return response.json()
+        result = response.json()
+        logger.info("ConfluenceClient.create_page | done | page_id={}", result.get("id"))
+        return result
 
     def update_page(self, page_id: str, title: str, body: str, version: int) -> dict:
         """ページを更新する。
@@ -144,6 +153,13 @@ class ConfluenceClient:
         Returns:
             更新されたページの JSON レスポンス
         """
+        logger.info(
+            "ConfluenceClient.update_page | page_id={} title={} version={}->{}",
+            page_id,
+            title,
+            version,
+            version + 1,
+        )
         url = f"{self._api}/pages/{page_id}"
         payload = {
             "id": page_id,
@@ -157,6 +173,7 @@ class ConfluenceClient:
         }
         response = requests.put(url, auth=self.auth, headers=self.headers, json=payload, timeout=30)
         response.raise_for_status()
+        logger.info("ConfluenceClient.update_page | done | page_id={}", page_id)
         return response.json()
 
     def search_pages(self, query: str, space_key: str | None = None, limit: int = 25) -> list[dict]:
@@ -170,6 +187,7 @@ class ConfluenceClient:
         Returns:
             ページのリスト
         """
+        logger.info("ConfluenceClient.search_pages | query={} space_key={}", query, space_key)
         url = f"{self.base_url}/wiki/rest/api/content/search"
         cql = f'type=page AND title~"{query}"'
         if space_key:
@@ -179,7 +197,9 @@ class ConfluenceClient:
             url, auth=self.auth, headers=self.headers, params=params, timeout=30
         )
         response.raise_for_status()
-        return response.json().get("results", [])
+        results = response.json().get("results", [])
+        logger.info("ConfluenceClient.search_pages | done | count={}", len(results))
+        return results
 
     def get_page_children(self, page_id: str) -> list[dict]:
         """子ページの一覧を取得する。
@@ -190,10 +210,13 @@ class ConfluenceClient:
         Returns:
             子ページのリスト
         """
+        logger.info("ConfluenceClient.get_page_children | page_id={}", page_id)
         url = f"{self._api}/pages/{page_id}/children"
         response = requests.get(url, auth=self.auth, headers=self.headers, timeout=30)
         response.raise_for_status()
-        return response.json().get("results", [])
+        results = response.json().get("results", [])
+        logger.info("ConfluenceClient.get_page_children | done | count={}", len(results))
+        return results
 
     # ------------------------------------------------------------------
     # Table utilities
@@ -213,12 +236,14 @@ class ConfluenceClient:
             ValueError: ページにテーブルが存在しない場合
         """
         pid = self._resolve_page_id(page_id)
+        logger.info("ConfluenceClient.get_first_table | page_id={}", pid)
         page = self.get_page(pid)
         body_html = page["body"]["storage"]["value"]
         soup = BeautifulSoup(body_html, "html.parser")
         table = soup.find("table")
         if not table or not isinstance(table, Tag):
             raise ValueError(f"ページ {pid} にテーブルが見つかりません")
+        logger.info("ConfluenceClient.get_first_table | done | page_id={}", pid)
         return table
 
     def insert_row_below_header(
@@ -244,6 +269,11 @@ class ConfluenceClient:
             ValueError: page_id 未指定 / テーブル未検出 / ヘッダー行未検出
         """
         pid = self._resolve_page_id(page_id)
+        logger.info(
+            "ConfluenceClient.insert_row_below_header | page_id={} cols={}",
+            pid,
+            len(row_data),
+        )
 
         # ページ取得
         page = self.get_page(pid)
@@ -276,7 +306,9 @@ class ConfluenceClient:
 
         # ページ更新
         updated_body = str(soup)
-        return self.update_page(pid, title, updated_body, version)
+        result = self.update_page(pid, title, updated_body, version)
+        logger.info("ConfluenceClient.insert_row_below_header | done | page_id={}", pid)
+        return result
 
     # ------------------------------------------------------------------
     # Internal helpers

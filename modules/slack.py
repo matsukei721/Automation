@@ -1,9 +1,10 @@
-"""Slack API client."""
+"""Slack API client。"""
 
 import os
 from pathlib import Path
 
 import requests
+from loguru import logger
 
 
 class SlackClient:
@@ -16,6 +17,7 @@ class SlackClient:
             "Authorization": f"Bearer {self._token}",
             "Content-Type": "application/json; charset=utf-8",
         }
+        logger.info("SlackClient initialized")
 
     def _check_response(self, data: dict) -> dict:
         """Slack API のエラーチェック。
@@ -42,13 +44,16 @@ class SlackClient:
         Returns:
             API レスポンス
         """
+        logger.info("SlackClient.post_message | channel={}", channel)
         url = f"{self._base_url}/chat.postMessage"
         payload: dict = {"channel": channel, "text": text}
         if blocks:
             payload["blocks"] = blocks
         response = requests.post(url, headers=self.headers, json=payload, timeout=30)
         response.raise_for_status()
-        return self._check_response(response.json())
+        result = self._check_response(response.json())
+        logger.info("SlackClient.post_message | done | ts={}", result.get("ts"))
+        return result
 
     def update_message(self, channel: str, ts: str, text: str, blocks: list | None = None) -> dict:
         """送信済みメッセージを更新する。
@@ -62,6 +67,7 @@ class SlackClient:
         Returns:
             API レスポンス
         """
+        logger.info("SlackClient.update_message | channel={} ts={}", channel, ts)
         url = f"{self._base_url}/chat.update"
         payload: dict = {"channel": channel, "ts": ts, "text": text}
         if blocks:
@@ -80,11 +86,68 @@ class SlackClient:
         Returns:
             API レスポンス
         """
+        logger.info("SlackClient.delete_message | channel={} ts={}", channel, ts)
         url = f"{self._base_url}/chat.delete"
         payload = {"channel": channel, "ts": ts}
         response = requests.post(url, headers=self.headers, json=payload, timeout=30)
         response.raise_for_status()
         return self._check_response(response.json())
+
+    # ------------------------------------------------------------------
+    # Notifications
+    # ------------------------------------------------------------------
+
+    def notify_success(self, channel: str, title: str, detail: str = "") -> dict:
+        """処理成功をチャンネルに通知する。
+
+        Args:
+            channel: 通知先チャンネル
+            title: 通知タイトル
+            detail: 補足メッセージ（省略可）
+
+        Returns:
+            API レスポンス
+        """
+        logger.info("SlackClient.notify_success | channel={} title={}", channel, title)
+        body = f":white_check_mark: *{title}*"
+        if detail:
+            body += f"\n{detail}"
+        blocks = [{"type": "section", "text": {"type": "mrkdwn", "text": body}}]
+        return self.post_message(channel, text=f"✅ {title}", blocks=blocks)
+
+    def notify_error(
+        self,
+        channel: str,
+        title: str,
+        error: Exception,
+        traceback_str: str = "",
+    ) -> dict:
+        """処理失敗をエラー内容・スタックトレース付きでチャンネルに通知する。
+
+        Args:
+            channel: 通知先チャンネル
+            title: 通知タイトル
+            error: 発生した例外
+            traceback_str: スタックトレース文字列（traceback.format_exc() の出力）
+
+        Returns:
+            API レスポンス
+        """
+        logger.error(
+            "SlackClient.notify_error | channel={} title={} error={}", channel, title, error
+        )
+        lines = [
+            f":x: *{title}*",
+            f"`{type(error).__name__}: {error}`",
+        ]
+        if traceback_str:
+            # Slack のメッセージ上限に合わせてトレースを切り詰める
+            tb_truncated = traceback_str[-2000:] if len(traceback_str) > 2000 else traceback_str
+            lines.append(f"*Traceback:*\n```{tb_truncated}```")
+
+        body = "\n".join(lines)
+        blocks = [{"type": "section", "text": {"type": "mrkdwn", "text": body}}]
+        return self.post_message(channel, text=f"❌ {title}", blocks=blocks)
 
     # ------------------------------------------------------------------
     # Channels
@@ -139,8 +202,9 @@ class SlackClient:
         Returns:
             API レスポンス
         """
-        url = f"{self._base_url}/files.uploadV2"
         path = Path(file_path)
+        logger.info("SlackClient.upload_file | channels={} file={}", channels, path.name)
+        url = f"{self._base_url}/files.uploadV2"
         upload_headers = {"Authorization": f"Bearer {self._token}"}
         with path.open("rb") as f:
             response = requests.post(
@@ -155,7 +219,9 @@ class SlackClient:
                 timeout=60,
             )
         response.raise_for_status()
-        return self._check_response(response.json())
+        result = self._check_response(response.json())
+        logger.info("SlackClient.upload_file | done | file={}", path.name)
+        return result
 
     # ------------------------------------------------------------------
     # Users

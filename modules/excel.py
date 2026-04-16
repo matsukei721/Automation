@@ -8,6 +8,7 @@ from urllib.parse import quote
 
 import requests
 import yaml
+from loguru import logger
 
 # Excel が日付として扱う代表的な文字列フォーマット（日本語環境に合わせて優先順に列挙）
 _DATE_FORMATS = [
@@ -97,6 +98,8 @@ class ExcelClient:
         self.default_start_col: str = "A"
         self.default_end_col: str = "G"
 
+        logger.info("ExcelClient initialized | tenant_id={}", self._tenant_id)
+
     # ------------------------------------------------------------------
     # コンストラクタ
     # ------------------------------------------------------------------
@@ -141,6 +144,11 @@ class ExcelClient:
         if rng.get("end_col"):
             instance.default_end_col = rng["end_col"].upper()
 
+        logger.info(
+            "ExcelClient.from_config | file_id={} sheet={}",
+            instance.default_file_id,
+            instance.default_sheet_name,
+        )
         return instance
 
     # ------------------------------------------------------------------
@@ -156,6 +164,7 @@ class ExcelClient:
         if self._token and time.time() < self._token_expires_at - 60:
             return self._token
 
+        logger.debug("ExcelClient._get_access_token | fetching new token")
         url = f"{self._login_base}/{self._tenant_id}/oauth2/v2.0/token"
         resp = requests.post(
             url,
@@ -172,6 +181,9 @@ class ExcelClient:
 
         self._token = body["access_token"]
         self._token_expires_at = time.time() + body.get("expires_in", 3600)
+        logger.debug(
+            "ExcelClient._get_access_token | token acquired expires_in={}", body.get("expires_in")
+        )
         return self._token  # type: ignore[return-value]
 
     def _headers(self) -> dict:
@@ -238,9 +250,11 @@ class ExcelClient:
             ワークシートのメタ情報辞書
         """
         fid, did, sname = self._resolve(file_id, drive_id, sheet_name)
+        logger.info("ExcelClient.get_sheet | sheet={} file_id={}", sname, fid)
         url = self._sheet_url(fid, did, sname)
         resp = requests.get(url, headers=self._headers(), timeout=30)
         resp.raise_for_status()
+        logger.info("ExcelClient.get_sheet | done | sheet={}", sname)
         return resp.json()
 
     def get_used_range(
@@ -260,10 +274,13 @@ class ExcelClient:
             usedRange の JSON レスポンス（values / formulas / address を含む）
         """
         fid, did, sname = self._resolve(file_id, drive_id, sheet_name)
+        logger.info("ExcelClient.get_used_range | sheet={}", sname)
         url = f"{self._sheet_url(fid, did, sname)}/usedRange"
         resp = requests.get(url, headers=self._headers(), timeout=30)
         resp.raise_for_status()
-        return resp.json()
+        result = resp.json()
+        logger.info("ExcelClient.get_used_range | done | address={}", result.get("address"))
+        return result
 
     # ------------------------------------------------------------------
     # 日付検索
@@ -302,6 +319,8 @@ class ExcelClient:
         else:
             td = target_date
 
+        logger.info("ExcelClient.find_row_by_date | sheet={} col={} date={}", sname, date_col, td)
+
         # 日付列の値を一括取得（最大 2000 行）
         col = date_col.upper()
         address = f"{col}1:{col}2000"
@@ -316,8 +335,11 @@ class ExcelClient:
                 continue
             cell_date = _parse_date(row[0])
             if cell_date == td:
-                return row_idx + 1  # 1-indexed
+                row_number = row_idx + 1
+                logger.info("ExcelClient.find_row_by_date | found | date={} row={}", td, row_number)
+                return row_number
 
+        logger.warning("ExcelClient.find_row_by_date | not found | date={}", td)
         return None
 
     # ------------------------------------------------------------------
@@ -363,12 +385,15 @@ class ExcelClient:
             )
 
         address = f"{sc}{row_number}:{ec}{row_number}"
+        logger.info("ExcelClient.write_row | sheet={} range={}", sname, address)
+
         encoded_addr = quote(f"'{address}'", safe="'")
         url = f"{self._sheet_url(fid, did, sname)}/range(address={encoded_addr})"
 
         payload = {"values": [data]}
         resp = requests.patch(url, headers=self._headers(), json=payload, timeout=30)
         resp.raise_for_status()
+        logger.info("ExcelClient.write_row | done | range={}", address)
         return resp.json()
 
     def write_row_by_date(
