@@ -3,7 +3,7 @@ from modules.excel import ExcelClient
 from modules.jira import JiraClient
 from modules.logger import setup_logger
 from modules.slack import SlackClient
-from modules.utils import date_range, format_date, today
+from modules.utils import date_range, format_date, load_config, today
 
 __all__ = [
     "JiraClient",
@@ -14,4 +14,5 @@ __all__ = [
     "today",
     "format_date",
     "date_range",
+    "load_config",
 ]

@@ -4,23 +4,11 @@ import os
 from pathlib import Path
 
 import requests
-import yaml
 from bs4 import BeautifulSoup, Tag
 from loguru import logger
 from requests.auth import HTTPBasicAuth
 
-
-def load_config(config_path: str | Path = "config.yaml") -> dict:
-    """config.yaml を読み込んで辞書で返す。
-
-    Args:
-        config_path: config.yaml のパス（デフォルト: カレントディレクトリの config.yaml）
-
-    Returns:
-        設定辞書
-    """
-    with Path(config_path).open(encoding="utf-8") as f:
-        return yaml.safe_load(f)
+from modules.utils import load_config
 
 
 class ConfluenceClient:
@@ -69,10 +57,12 @@ class ConfluenceClient:
         """
         config = load_config(config_path)
         mode = config.get("account_mode", "personal").upper()
+        if mode not in ("PERSONAL", "SERVICE"):
+            raise ValueError(
+                f"account_mode は 'personal' または 'service' である必要があります: {mode!r}"
+            )
         conf = config.get("confluence", {})
         logger.info("ConfluenceClient.from_config | account_mode={}", mode.lower())
-
-        os.environ.setdefault("CONFLUENCE_BASE_URL", conf.get("base_url", ""))
 
         instance = cls(
             email=os.environ[f"CONFLUENCE_EMAIL_{mode}"],
@@ -188,11 +178,11 @@ class ConfluenceClient:
             ページのリスト
         """
         logger.info("ConfluenceClient.search_pages | query={} space_key={}", query, space_key)
-        url = f"{self.base_url}/wiki/rest/api/content/search"
+        url = f"{self._api}/search"
         cql = f'type=page AND title~"{query}"'
         if space_key:
             cql += f' AND space.key="{space_key}"'
-        params = {"cql": cql, "limit": limit}
+        params = {"query": cql, "limit": limit}
         response = requests.get(
             url, auth=self.auth, headers=self.headers, params=params, timeout=30
         )

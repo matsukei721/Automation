@@ -1,6 +1,5 @@
 import traceback
 
-import yaml
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -8,17 +7,13 @@ load_dotenv()
 from loguru import logger  # noqa: E402
 
 from modules import ConfluenceClient, JiraClient, SlackClient, setup_logger  # noqa: E402
+from modules.utils import load_config  # noqa: E402
 
 setup_logger()
 
 
-def _load_config(path: str = "config.yaml") -> dict:
-    with open(path, encoding="utf-8") as f:
-        return yaml.safe_load(f)
-
-
 def main() -> None:
-    config = _load_config()
+    config = load_config()
     notify_channel = config.get("slack", {}).get("notify_channel", "#general")
 
     slack = SlackClient()

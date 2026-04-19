@@ -4,14 +4,10 @@ import os
 from pathlib import Path
 
 import requests
-import yaml
 from loguru import logger
 from requests.auth import HTTPBasicAuth
 
-
-def _load_config(config_path: str | Path) -> dict:
-    with Path(config_path).open(encoding="utf-8") as f:
-        return yaml.safe_load(f)
+from modules.utils import load_config as _load_config
 
 
 class JiraClient:
@@ -59,6 +55,10 @@ class JiraClient:
         """
         config = _load_config(config_path)
         mode = config.get("account_mode", "personal").upper()
+        if mode not in ("PERSONAL", "SERVICE"):
+            raise ValueError(
+                f"account_mode は 'personal' または 'service' である必要があります: {mode!r}"
+            )
         logger.info("JiraClient.from_config | account_mode={}", mode.lower())
         return cls(
             email=os.environ[f"JIRA_EMAIL_{mode}"],

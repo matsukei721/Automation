@@ -2,8 +2,17 @@
 
 from collections.abc import Iterator
 from datetime import date, timedelta
+from pathlib import Path
 
-__all__ = ["today", "format_date", "date_range"]
+import yaml
+
+__all__ = ["today", "format_date", "date_range", "load_config"]
+
+
+def load_config(config_path: str | Path = "config.yaml") -> dict:
+    """config.yaml を読み込んで辞書で返す。"""
+    with Path(config_path).open(encoding="utf-8") as f:
+        return yaml.safe_load(f)
 
 
 def today() -> date:
