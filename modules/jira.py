@@ -15,44 +15,37 @@ class JiraClient:
 
     直接生成:
         client = JiraClient()
-        # JIRA_EMAIL_PERSONAL_WRITE / JIRA_API_TOKEN_PERSONAL_WRITE を使用
+        # JIRA_EMAIL_PERSONAL / JIRA_API_TOKEN_PERSONAL を使用
 
-    モード・スコープ切り替え対応:
+    モード切り替え対応:
         client = JiraClient.from_config()
-        # config.yaml の account_mode・jira.scope に応じて自動選択
+        # config.yaml の account_mode に応じて PERSONAL / SERVICE を自動選択
     """
 
-    def __init__(
-        self, email: str | None = None, api_token: str | None = None, scope: str = "write"
-    ) -> None:
+    def __init__(self, email: str | None = None, api_token: str | None = None) -> None:
         """
         Args:
-            email: Jira ログインメール。省略時は JIRA_EMAIL_PERSONAL_{scope} を使用。
-            api_token: Jira API トークン。省略時は JIRA_API_TOKEN_PERSONAL_{scope} を使用。
-            scope: 権限スコープ（'read' または 'write'）
+            email: Jira ログインメール。省略時は JIRA_EMAIL_PERSONAL を使用。
+            api_token: Jira API トークン。省略時は JIRA_API_TOKEN_PERSONAL を使用。
         """
-        if scope.lower() not in ("read", "write"):
-            raise ValueError(f"scope は 'read' または 'write' である必要があります: {scope!r}")
-
-        self.scope = scope.lower()
         self.base_url = os.environ["JIRA_BASE_URL"].rstrip("/")
         self.auth = HTTPBasicAuth(
-            email or os.environ[f"JIRA_EMAIL_PERSONAL_{scope.upper()}"],
-            api_token or os.environ[f"JIRA_API_TOKEN_PERSONAL_{scope.upper()}"],
+            email or os.environ["JIRA_EMAIL_PERSONAL"],
+            api_token or os.environ["JIRA_API_TOKEN_PERSONAL"],
         )
         self.headers = {
             "Accept": "application/json",
             "Content-Type": "application/json",
         }
         self._api = f"{self.base_url}/rest/api/3"
-        logger.info("JiraClient initialized | base_url={} scope={}", self.base_url, self.scope)
+        logger.info("JiraClient initialized | base_url={}", self.base_url)
 
     @classmethod
     def from_config(cls, config_path: str | Path = "config.yaml") -> "JiraClient":
-        """config.yaml の account_mode・jira.scope に応じた認証情報でクライアントを生成する。
+        """config.yaml の account_mode に応じた認証情報でクライアントを生成する。
 
-        account_mode: personal / service
-        jira.scope: read（参照のみ） / write（読取・作成・更新・コメント）
+        account_mode: personal → JIRA_EMAIL_PERSONAL / JIRA_API_TOKEN_PERSONAL
+        account_mode: service  → JIRA_EMAIL_SERVICE  / JIRA_API_TOKEN_SERVICE
 
         Args:
             config_path: config.yaml のパス
@@ -62,30 +55,15 @@ class JiraClient:
         """
         config = _load_config(config_path)
         mode = config.get("account_mode", "personal").upper()
-        scope = config.get("jira", {}).get("scope", "write").upper()
-
         if mode not in ("PERSONAL", "SERVICE"):
             raise ValueError(
                 f"account_mode は 'personal' または 'service' である必要があります: {mode!r}"
             )
-        if scope not in ("READ", "WRITE"):
-            raise ValueError(f"jira.scope は 'read' または 'write' である必要があります: {scope!r}")
-
-        logger.info(
-            "JiraClient.from_config | account_mode={} scope={}", mode.lower(), scope.lower()
-        )
+        logger.info("JiraClient.from_config | account_mode={}", mode.lower())
         return cls(
-            email=os.environ[f"JIRA_EMAIL_{mode}_{scope}"],
-            api_token=os.environ[f"JIRA_API_TOKEN_{mode}_{scope}"],
-            scope=scope.lower(),
+            email=os.environ[f"JIRA_EMAIL_{mode}"],
+            api_token=os.environ[f"JIRA_API_TOKEN_{mode}"],
         )
-
-    def _check_write_scope(self) -> None:
-        """WRITE スコープ要件をチェック。READ では実行不可な操作を防止する。"""
-        if self.scope == "read":
-            raise PermissionError(
-                f"この操作は WRITE スコープが必要です。現在のスコープ: {self.scope}"
-            )
 
     # ------------------------------------------------------------------
     # Issue
@@ -123,7 +101,6 @@ class JiraClient:
         Returns:
             作成された Issue の JSON レスポンス
         """
-        self._check_write_scope()
         logger.info(
             "JiraClient.create_issue | project={} type={} summary={}",
             project_key,
@@ -163,7 +140,6 @@ class JiraClient:
             issue_key: Issue キー（例: "PROJ-123"）
             fields: 更新するフィールドの辞書
         """
-        self._check_write_scope()
         logger.info(
             "JiraClient.update_issue | issue_key={} fields={}", issue_key, list(fields.keys())
         )
@@ -204,7 +180,6 @@ class JiraClient:
         Returns:
             作成されたコメントの JSON レスポンス
         """
-        self._check_write_scope()
         logger.info("JiraClient.add_comment | issue_key={}", issue_key)
         url = f"{self._api}/issue/{issue_key}/comment"
         payload = {

@@ -58,21 +58,15 @@ cp .env.example .env
 
 #### Jira / Confluence
 
-READ / WRITE スコープに分けてトークンを作成してください（詳細は[セキュリティ設定ガイド](#セキュリティ設定ガイド)参照）。
-
 | 変数名 | 説明 | 取得元 |
 |---|---|---|
 | `JIRA_BASE_URL` | Jira のベース URL | 社内の Atlassian ドメイン |
-| `JIRA_EMAIL_PERSONAL_READ` | 個人アカウントのメールアドレス（READ） | 自分の Atlassian ログインメール |
-| `JIRA_API_TOKEN_PERSONAL_READ` | 個人アカウントの API トークン（READ） | [Atlassian アカウント設定](https://id.atlassian.com/manage-profile/security/api-tokens) |
-| `JIRA_EMAIL_PERSONAL_WRITE` | 個人アカウントのメールアドレス（WRITE） | 自分の Atlassian ログインメール |
-| `JIRA_API_TOKEN_PERSONAL_WRITE` | 個人アカウントの API トークン（WRITE） | [Atlassian アカウント設定](https://id.atlassian.com/manage-profile/security/api-tokens) |
-| `JIRA_EMAIL_SERVICE_READ` | サービスアカウントのメールアドレス（READ） | 管理者に確認 |
-| `JIRA_API_TOKEN_SERVICE_READ` | サービスアカウントの API トークン（READ） | 管理者に確認 |
-| `JIRA_EMAIL_SERVICE_WRITE` | サービスアカウントのメールアドレス（WRITE） | 管理者に確認 |
-| `JIRA_API_TOKEN_SERVICE_WRITE` | サービスアカウントの API トークン（WRITE） | 管理者に確認 |
+| `JIRA_EMAIL_PERSONAL` | 個人アカウントのメールアドレス | 自分の Atlassian ログインメール |
+| `JIRA_API_TOKEN_PERSONAL` | 個人アカウントの API トークン | [Atlassian アカウント設定](https://id.atlassian.com/manage-profile/security/api-tokens) |
+| `JIRA_EMAIL_SERVICE` | サービスアカウントのメールアドレス | 管理者に確認 |
+| `JIRA_API_TOKEN_SERVICE` | サービスアカウントの API トークン | 管理者に確認 |
 | `CONFLUENCE_BASE_URL` | Confluence のベース URL | 社内の Atlassian ドメイン（Jira と同じことが多い） |
-| `CONFLUENCE_EMAIL_*_READ/WRITE` / `CONFLUENCE_API_TOKEN_*_READ/WRITE` | Jira と同様 | Jira と同じ Atlassian アカウント |
+| `CONFLUENCE_EMAIL_*` / `CONFLUENCE_API_TOKEN_*` | Jira と同様 | Jira と同じ Atlassian アカウント |
 
 #### Slack
 
@@ -106,13 +100,9 @@ account_mode: personal
 slack:
   notify_channel: "#general"   # 実行結果の通知先チャンネル
 
-jira:
-  scope: write    # read または write を指定
-
 confluence:
   base_url: https://your-domain.atlassian.net
   page_id: "123456789"         # 操作対象のページID
-  scope: write    # read または write を指定
 
 ms_graph:
   graph_base_url: https://graph.microsoft.com/v1.0
@@ -134,29 +124,25 @@ excel:
 
 ### 最小権限の原則
 
-このプログラムは **最小権限の原則** に基づいて設計されており、各サービスのトークンを「読み取り（READ）」と「読み書き（WRITE）」に分離しています。
+トークン・権限は操作に必要な最小スコープのみ付与してください。
 
-#### Jira / Confluence — スコープ分離
+#### Jira / Confluence — 必要なスコープ
 
-| スコープ | 対象操作 | 環境変数サフィックス |
-|---|---|---|
-| READ | Issue・ページ参照、JQL検索 | `*_READ` |
-| WRITE | Issue 作成・更新・コメント追加、ページ作成・更新 | `*_WRITE` |
+**Atlassian Granular API Token** を使用し、以下のスコープを付与してください。
 
-**トークン作成時の設定（Atlassian Granular API Token）**
+| サービス | 必要なスコープ |
+|---|---|
+| Jira | `read:jira-work`, `write:jira-work` |
+| Confluence | `read:confluence-content.all`, `write:confluence-content` |
+
+**トークン作成手順**
 1. [Atlassian アカウント設定](https://id.atlassian.com/manage-profile/security/api-tokens) へアクセス
 2. 「Create API token」→「Granular API token」を選択
-3. READ トークン: 参照系スコープのみ付与
-4. WRITE トークン: 操作に必要なすべてのスコープを付与
-
-> `personal` / `service` 以外の `account_mode`、または `read` / `write` 以外の `scope` を設定した場合、クライアント生成時に `ValueError` が発生します。
+3. 上記スコープを付与して作成
 
 #### Microsoft Graph API — 権限設定
 
-| 権限 | 用途 |
-|---|---|
-| `Files.Read.All` | ファイル・シート参照のみ |
-| `Files.ReadWrite.All` | ファイル・シート読み書き（推奨） |
+必要な API 権限: `Files.ReadWrite.All`（アプリケーション権限）
 
 Azure Portal → アプリの登録 → API のアクセス許可 → Microsoft Graph → アプリケーション権限 → 管理者の同意を与える
 
