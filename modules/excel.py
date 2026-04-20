@@ -74,7 +74,16 @@ class ExcelClient:
     """MS Graph API を経由した Excel ファイル操作クライアント。
 
     認証は OAuth2 クライアント資格情報フロー（アプリケーション権限）を使用する。
-    必要な Azure AD アプリ権限: Files.ReadWrite.All（または Sites.ReadWrite.All）
+
+    必要な Azure AD アプリ権限（最小権限の原則に基づき以下を推奨）:
+    - Files.Read.All: ファイル・シート読み取りのみが必要な場合
+    - Files.ReadWrite.All: ファイル・シート読み取り・書き込みが必要な場合（デフォルト推奨）
+
+    権限の設定方法:
+    1. Azure Portal → アプリの登録 → API のアクセス許可
+    2. 「Microsoft Graph」を選択
+    3. 「アプリケーション権限」から「Files」> 上記権限を追加
+    4. 「管理者の同意を与える」をクリック
     """
 
     def __init__(self) -> None:

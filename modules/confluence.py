@@ -16,23 +16,31 @@ class ConfluenceClient:
 
     直接生成:
         client = ConfluenceClient()
-        # CONFLUENCE_EMAIL_PERSONAL / CONFLUENCE_API_TOKEN_PERSONAL を使用
+        # CONFLUENCE_EMAIL_PERSONAL_WRITE / CONFLUENCE_API_TOKEN_PERSONAL_WRITE を使用
 
-    モード切り替え対応:
+    モード・スコープ切り替え対応:
         client = ConfluenceClient.from_config()
-        # config.yaml の account_mode に応じて PERSONAL / SERVICE を自動選択
+        # config.yaml の account_mode・confluence.scope に応じて自動選択
     """
 
-    def __init__(self, email: str | None = None, api_token: str | None = None) -> None:
+    def __init__(
+        self, email: str | None = None, api_token: str | None = None, scope: str = "write"
+    ) -> None:
         """
         Args:
-            email: Confluence ログインメール。省略時は CONFLUENCE_EMAIL_PERSONAL を使用。
-            api_token: Confluence API トークン。省略時は CONFLUENCE_API_TOKEN_PERSONAL を使用。
+            email: Confluence ログインメール。省略時は CONFLUENCE_EMAIL_PERSONAL_{scope} を使用。
+            api_token: Confluence API トークン。省略時は CONFLUENCE_API_TOKEN_PERSONAL_{scope}
+                を使用。
+            scope: 権限スコープ（'read' または 'write'）
         """
+        if scope.lower() not in ("read", "write"):
+            raise ValueError(f"scope は 'read' または 'write' である必要があります: {scope!r}")
+
+        self.scope = scope.lower()
         self.base_url = os.environ["CONFLUENCE_BASE_URL"].rstrip("/")
         self.auth = HTTPBasicAuth(
-            email or os.environ["CONFLUENCE_EMAIL_PERSONAL"],
-            api_token or os.environ["CONFLUENCE_API_TOKEN_PERSONAL"],
+            email or os.environ[f"CONFLUENCE_EMAIL_PERSONAL_{scope.upper()}"],
+            api_token or os.environ[f"CONFLUENCE_API_TOKEN_PERSONAL_{scope.upper()}"],
         )
         self.headers = {
             "Accept": "application/json",
@@ -40,14 +48,16 @@ class ConfluenceClient:
         }
         self._api = f"{self.base_url}/wiki/api/v2"
         self.default_page_id: str | None = None
-        logger.info("ConfluenceClient initialized | base_url={}", self.base_url)
+        logger.info(
+            "ConfluenceClient initialized | base_url={} scope={}", self.base_url, self.scope
+        )
 
     @classmethod
     def from_config(cls, config_path: str | Path = "config.yaml") -> "ConfluenceClient":
         """config.yaml の account_mode と confluence セクションからクライアントを生成する。
 
-        account_mode: personal → CONFLUENCE_EMAIL_PERSONAL / CONFLUENCE_API_TOKEN_PERSONAL
-        account_mode: service  → CONFLUENCE_EMAIL_SERVICE  / CONFLUENCE_API_TOKEN_SERVICE
+        account_mode: personal / service
+        confluence.scope: read（参照のみ） / write（読取・作成・更新）
 
         Args:
             config_path: config.yaml のパス
@@ -57,19 +67,36 @@ class ConfluenceClient:
         """
         config = load_config(config_path)
         mode = config.get("account_mode", "personal").upper()
+        scope = config.get("confluence", {}).get("scope", "write").upper()
+
         if mode not in ("PERSONAL", "SERVICE"):
             raise ValueError(
                 f"account_mode は 'personal' または 'service' である必要があります: {mode!r}"
             )
+        if scope not in ("READ", "WRITE"):
+            raise ValueError(
+                f"confluence.scope は 'read' または 'write' である必要があります: {scope!r}"
+            )
+
         conf = config.get("confluence", {})
-        logger.info("ConfluenceClient.from_config | account_mode={}", mode.lower())
+        logger.info(
+            "ConfluenceClient.from_config | account_mode={} scope={}", mode.lower(), scope.lower()
+        )
 
         instance = cls(
-            email=os.environ[f"CONFLUENCE_EMAIL_{mode}"],
-            api_token=os.environ[f"CONFLUENCE_API_TOKEN_{mode}"],
+            email=os.environ[f"CONFLUENCE_EMAIL_{mode}_{scope}"],
+            api_token=os.environ[f"CONFLUENCE_API_TOKEN_{mode}_{scope}"],
+            scope=scope.lower(),
         )
         instance.default_page_id = str(conf["page_id"]) if conf.get("page_id") else None
         return instance
+
+    def _check_write_scope(self) -> None:
+        """WRITE スコープ要件をチェック。READ では実行不可な操作を防止する。"""
+        if self.scope == "read":
+            raise PermissionError(
+                f"この操作は WRITE スコープが必要です。現在のスコープ: {self.scope}"
+            )
 
     # ------------------------------------------------------------------
     # Pages
@@ -109,6 +136,7 @@ class ConfluenceClient:
         Returns:
             作成されたページの JSON レスポンス
         """
+        self._check_write_scope()
         logger.info("ConfluenceClient.create_page | space_id={} title={}", space_id, title)
         url = f"{self._api}/pages"
         payload: dict = {
@@ -143,6 +171,7 @@ class ConfluenceClient:
         Returns:
             更新されたページの JSON レスポンス
         """
+        self._check_write_scope()
         logger.info(
             "ConfluenceClient.update_page | page_id={} title={} version={}->{}",
             page_id,
@@ -258,6 +287,7 @@ class ConfluenceClient:
         Raises:
             ValueError: page_id 未指定 / テーブル未検出 / ヘッダー行未検出
         """
+        self._check_write_scope()
         pid = self._resolve_page_id(page_id)
         logger.info(
             "ConfluenceClient.insert_row_below_header | page_id={} cols={}",
