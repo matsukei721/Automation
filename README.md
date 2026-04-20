@@ -136,6 +136,8 @@ account_mode: service
 | `personal` | `JIRA_EMAIL_PERSONAL` / `JIRA_API_TOKEN_PERSONAL` など |
 | `service` | `JIRA_EMAIL_SERVICE` / `JIRA_API_TOKEN_SERVICE` など |
 
+> `personal` / `service` 以外の値を設定した場合、クライアント生成時に `ValueError` が発生します。
+
 Slack・Excel（MS Graph）はアプリ権限のため、モード切り替えの影響を受けない。
 
 ---
@@ -248,10 +250,10 @@ excel.write_row_by_date(
 excel.write_row(row_number=5, data=["A", "B", "C", "D", "E", "F", "G"])
 ```
 
-### utils（日付ユーティリティ）
+### utils（日付・設定ユーティリティ）
 
 ```python
-from modules.utils import today, format_date, date_range
+from modules.utils import today, format_date, date_range, load_config
 from datetime import date
 
 # 今日の日付
@@ -266,6 +268,10 @@ format_date(d, "%Y年%m月%d日")         # "2026年04月16日"
 for d in date_range(date(2026, 4, 1), date(2026, 4, 5)):
     print(d)
 # 2026-04-01, 2026-04-02, ... , 2026-04-05
+
+# config.yaml の読み込み
+config = load_config()                  # デフォルト: カレントディレクトリの config.yaml
+config = load_config("path/to/config.yaml")  # パスを指定する場合
 ```
 
 ---
