@@ -31,7 +31,8 @@ class ConfluenceClient:
             email: Confluence ログインメール。省略時は CONFLUENCE_EMAIL_PERSONAL_{scope} を使用。
             api_token: Confluence API トークン。省略時は CONFLUENCE_API_TOKEN_PERSONAL_{scope}
                 を使用。
-            scope: 権限スコープ（'read' または 'write'）
+            scope: 権限スコープ（'read': 参照のみ / 'write': 読取+書込。
+                write トークンは Atlassian 側で read+write 両スコープの付与が必要）
         """
         if scope.lower() not in ("read", "write"):
             raise ValueError(f"scope は 'read' または 'write' である必要があります: {scope!r}")
@@ -58,6 +59,7 @@ class ConfluenceClient:
 
         account_mode: personal / service
         confluence.scope: read（参照のみ） / write（読取・作成・更新）
+            ※ write トークンは Atlassian 側で read+write 両スコープの付与が必要
 
         Args:
             config_path: config.yaml のパス
