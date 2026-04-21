@@ -4,11 +4,13 @@ import os
 import time
 from datetime import date, datetime
 from pathlib import Path
+from typing import Any
 from urllib.parse import quote
 
 import requests
-import yaml
 from loguru import logger
+
+from modules.utils import load_config
 
 # Excel が日付として扱う代表的な文字列フォーマット（日本語環境に合わせて優先順に列挙）
 _DATE_FORMATS = [
@@ -18,12 +20,6 @@ _DATE_FORMATS = [
     "%m/%d/%Y",
     "%d/%m/%Y",
 ]
-
-
-def load_config(config_path: str | Path = "config.yaml") -> dict:
-    """config.yaml を読み込む。"""
-    with Path(config_path).open(encoding="utf-8") as f:
-        return yaml.safe_load(f)
 
 
 def _col_letter_to_index(col: str) -> int:
@@ -358,7 +354,7 @@ class ExcelClient:
     def write_row(
         self,
         row_number: int,
-        data: list,
+        data: list[Any],
         start_col: str | None = None,
         end_col: str | None = None,
         sheet_name: str | None = None,
@@ -407,7 +403,7 @@ class ExcelClient:
 
     def write_row_by_date(
         self,
-        data: list,
+        data: list[Any],
         target_date: date | str | None = None,
         date_col: str = "A",
         start_col: str | None = None,

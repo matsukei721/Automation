@@ -33,7 +33,7 @@ class SlackClient:
     # Messages
     # ------------------------------------------------------------------
 
-    def post_message(self, channel: str, text: str, blocks: list | None = None) -> dict:
+    def post_message(self, channel: str, text: str, blocks: list[dict] | None = None) -> dict:
         """チャンネルにメッセージを送信する。
 
         Args:
@@ -55,7 +55,9 @@ class SlackClient:
         logger.info("SlackClient.post_message | done | ts={}", result.get("ts"))
         return result
 
-    def update_message(self, channel: str, ts: str, text: str, blocks: list | None = None) -> dict:
+    def update_message(
+        self, channel: str, ts: str, text: str, blocks: list[dict] | None = None
+    ) -> dict:
         """送信済みメッセージを更新する。
 
         Args:
