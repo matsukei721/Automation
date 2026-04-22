@@ -29,7 +29,8 @@
 - テストファイルは `tests/` に配置し、`test_*.py` の命名規則に従う
 - 新機能追加時は基本的なハッピーパステストを必ず作成する
 - 実行: `uv run pytest`
-- 外部API（Jira・Confluence・Slack・MS Graph）のテストは `unittest.mock` でモック化する
+- 外部API（Jira・Confluence・Slack・MS Graph）のテストは `unittest.mock` でモック化する（骨組み段階のみ）
+- 実APIを使う機能を実装したら、モックテストを実認証情報を使った結合テストに置き換える
 
 ## ディレクトリ構造
 - 再利用可能なモジュールは `modules/` 配下に配置する
